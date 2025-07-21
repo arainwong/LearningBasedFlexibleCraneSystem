@@ -8,9 +8,15 @@ from torch.utils.data import random_split, Dataset, DataLoader
 import wandb
 
 if __name__ == '__main__':
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
     print(f'Using device: {device}')
 
+    additional_discription = f'no theta4 theta6 target U'
     nn_type = 'LSTM'
     dataset_folder = 'GeneratedDataset_Train/CommandType_'
     command_type_set = ['sine', 'triangle', 'step']
@@ -43,9 +49,9 @@ if __name__ == '__main__':
     criterion = nn.MSELoss()
     # print(f'{dataloader}: {len(dataloader)}')
 
-    wandb.init(project='dynamics_model', name=f'{nn_type}_training_inH_{input_horizon}_outH_{output_horizon}')
+    wandb.init(project='dynamics_model', name=f'{nn_type}_inH_{input_horizon}_outH_{output_horizon}_{additional_discription}')
     
-    epochs = 50
+    epochs = 61
     for epoch in range(epochs):
         total_loss = 0.0
         for batch_static_inputs, batch_seq_inputs, batch_targets in train_dataloader:
@@ -79,12 +85,12 @@ if __name__ == '__main__':
                     test_loss += batch_loss
             avg_test_loss = test_loss / len(test_dataloader)
             print(f'Epoch: {epoch+1}, test loss: {avg_test_loss:.6f}')
-            target = test_targets[0, :, 0:3]
-            test = test_outputs[0, :, 0:3]
-            print(f'target: {target}, test output: {test}')
+            target = test_targets[0, :, 0:output_dim]
+            test = test_outputs[0, :, 0:output_dim]
+            print(f'target: {target}, \ntest output: {test}')
 
             wandb.log({"test_loss": avg_test_loss}, step=epoch)
             dynamic_model.train()
 
     wandb.finish()
-    torch.save(dynamic_model.state_dict(), f'Algorithm/dynamic_{nn_type}_model_weights.pth')
+    torch.save(dynamic_model.state_dict(), f'Algorithm/saved_models/forward_dynamic/dynamic_{nn_type}_model_weights.pth')
