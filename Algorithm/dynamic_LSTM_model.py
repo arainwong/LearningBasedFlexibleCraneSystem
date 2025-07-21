@@ -8,6 +8,9 @@ from torch.utils.data import random_split, Dataset, DataLoader
 import wandb
 
 if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'Using device: {device}')
+
     nn_type = 'LSTM'
     dataset_folder = 'GeneratedDataset_Train/CommandType_'
     command_type_set = ['sine', 'triangle', 'step']
@@ -28,7 +31,7 @@ if __name__ == '__main__':
         seq_feature_dim = seq_inputs.shape[2]
         _, output_horizon, output_dim = targets.shape
         dynamic_model = DynamicsLSTM(static_dim=static_dim, seq_feature_dim=seq_feature_dim, 
-                                     output_horizon=output_horizon, output_dim=output_dim, hidden_dim=256)
+                                     output_horizon=output_horizon, output_dim=output_dim, hidden_dim=256).to(device)
 
     train_size = int(train_proportion * len(full_dataset))
     test_size = len(full_dataset) - train_size
@@ -46,6 +49,10 @@ if __name__ == '__main__':
     for epoch in range(epochs):
         total_loss = 0.0
         for batch_static_inputs, batch_seq_inputs, batch_targets in train_dataloader:
+            batch_static_inputs = batch_static_inputs.to(device)
+            batch_seq_inputs = batch_seq_inputs.to(device)
+            batch_targets = batch_targets.to(device)
+            
             optimizer.zero_grad()
             outputs = dynamic_model(batch_static_inputs, batch_seq_inputs)
             loss = criterion(outputs, batch_targets)
@@ -63,6 +70,10 @@ if __name__ == '__main__':
             test_loss = 0.0
             with torch.no_grad():
                 for test_static_inputs, test_seq_inputs, test_targets in test_dataloader:
+                    test_static_inputs = test_static_inputs.to(device)
+                    test_seq_inputs = test_seq_inputs.to(device)
+                    test_targets = test_targets.to(device)
+                    
                     test_outputs = dynamic_model(test_static_inputs, test_seq_inputs)
                     batch_loss = criterion(test_outputs, test_targets).item()
                     test_loss += batch_loss
@@ -76,4 +87,4 @@ if __name__ == '__main__':
             dynamic_model.train()
 
     wandb.finish()
-    torch.save(dynamic_model.state_dict(), 'Algorithm/dynamic_{nn_type}_model_weights.pth')
+    torch.save(dynamic_model.state_dict(), f'Algorithm/dynamic_{nn_type}_model_weights.pth')
