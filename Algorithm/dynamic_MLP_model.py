@@ -1,6 +1,6 @@
 from utils import *
 from models.MLP import *
-from models.LSTM import *
+from Algorithm.models.dynamic_sequence_NN import *
 import numpy as np
 import torch
 import torch.nn as nn

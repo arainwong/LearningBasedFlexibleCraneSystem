@@ -3,9 +3,7 @@ import glob
 from scipy.io import loadmat
 import numpy as np
 import torch
-from torch.utils.data import Dataset
-
-
+import yaml
 
 def load_dataset(dataset_folder, command_type_set):
     # load all data from .mat files
@@ -158,64 +156,90 @@ def prepare_MLP_dataset(dataset, input_horizon, output_horizon):
     
     return inputs, targets
 
-def prepare_LSTM_dataset(dataset, input_horizon, output_horizon):
+def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, data_config, target_config):
     """
         input: [samples, input_horizon, feature_dim] -> feature_dim = 58 -> [t, command, u, v, a, p, dp, q]
         output: [samples, output_horizon, target_dim]
     """
 
-    target_key = 'Dataset_U_n'
-    target_set = dataset[target_key]  # [N, dim_U, time_step]
-    N, dim, time_step = target_set.shape
+    N, dim, time_step = dataset['Dataset_U_n'].shape    # [N, dim_U, time_step]
 
     input_list = []
     target_list = []
 
     for t in range(time_step - input_horizon - output_horizon + 1):
+        # t, xv1, xv2, xv3 -> dim = 4
         time_seq = dataset['time_seq'][:, t:t+input_horizon]         # [1, input_horizon]
         time_seq = np.tile(time_seq, (N, 1))                         # [N, input_horizon]
-        time_seq = time_seq[..., np.newaxis]                         # [N, input_horizon, 1]            # 1
+        time_seq = time_seq[..., np.newaxis]                         # [N, input_horizon, 1]
+        Command_xv1_to_xv3 = dataset['Dataset_Command_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)
 
-        Command_xv1_to_xv3 = dataset['Dataset_Command_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1) # 3
+        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in U, V, A; P, Q -> dim = 42
+        if data_config == 'data_config_0':
+            U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
+            U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
+            U_d7 = dataset['Dataset_U_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)             # 1
+            U_phi1_to_phi2 = dataset['Dataset_U_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)   # 2
+            U_EEx_to_EEz = dataset['Dataset_U_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)   # 3
 
-        # U_q1_to_q9 = dataset['Dataset_U_n'][:, 0:9, t:t+input_horizon].transpose(0, 2, 1)
-        U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
-        U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
-        U_d7 = dataset['Dataset_U_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)             # 1
-        U_phi1_to_phi2 = dataset['Dataset_U_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)   # 2
-        U_EEx_to_EEz = dataset['Dataset_U_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)   # 3
+            V_q1_to_q3 = dataset['Dataset_V_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)
+            V_d5 = dataset['Dataset_V_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)
+            V_d7 = dataset['Dataset_V_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)
+            V_ph1_to_phi2 = dataset['Dataset_V_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)
+            V_EEx_to_EEz = dataset['Dataset_V_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)
+            
+            A_q1_to_q3 = dataset['Dataset_A_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)
+            A_d5 = dataset['Dataset_A_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)
+            A_d7 = dataset['Dataset_A_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)
+            A_phi1_to_phi2 = dataset['Dataset_A_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)
+            A_EEx_to_EEz = dataset['Dataset_A_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)
 
-        # V_q1_to_q9 = dataset['Dataset_V_n'][:, 0:9, t:t+input_horizon].transpose(0, 2, 1)
-        V_q1_to_q3 = dataset['Dataset_V_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)
-        V_d5 = dataset['Dataset_V_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)
-        V_d7 = dataset['Dataset_V_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)
-        V_ph1_to_phi2 = dataset['Dataset_V_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)
-        V_EEx_to_EEz = dataset['Dataset_V_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)
-        
-        # A_q1_to_q9 = dataset['Dataset_A_n'][:, 0:9, t:t+input_horizon].transpose(0, 2, 1)
-        A_q1_to_q3 = dataset['Dataset_A_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)
-        A_d5 = dataset['Dataset_A_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)
-        A_d7 = dataset['Dataset_A_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)
-        A_phi1_to_phi2 = dataset['Dataset_A_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)
-        A_EEx_to_EEz = dataset['Dataset_A_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)
+            P_1_to_3 = dataset['Dataset_P_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)         # 6
+            # dP_1_to_3 = dataset['Dataset_dP_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)
+            Q_1_to_3 = dataset['Dataset_Q_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)         # 6
 
-        P_1_to_3 = dataset['Dataset_P_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)         # 6
-        # dP_1_to_3 = dataset['Dataset_dP_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)
-        Q_1_to_3 = dataset['Dataset_Q_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)         # 6
+            # concatenate features to [N, input_horizon, feature_dim]
+            input_t = np.concatenate([
+                time_seq,
+                Command_xv1_to_xv3,
+                U_q1_to_q3, U_d5, U_d7, U_phi1_to_phi2, U_EEx_to_EEz,
+                V_q1_to_q3, V_d5, V_d7, V_ph1_to_phi2, V_EEx_to_EEz,
+                A_q1_to_q3, A_d5, A_d7, A_phi1_to_phi2, A_EEx_to_EEz,
+                P_1_to_3, Q_1_to_3
+            ], axis=2)
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in U, V, A; P, Q.'
+        # [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EEx, EEy, EEz] in A; P, Q -> dim = 22
+        elif data_config == 'data_config_1':
+            U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
+            U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
+            U_d7 = dataset['Dataset_U_n'][:, 6:7, t:t+input_horizon].transpose(0, 2, 1)             # 1
 
-        # concatenate features to [N, input_horizon, feature_dim]
-        input_t = np.concatenate([
-            time_seq,
-            Command_xv1_to_xv3,
-            U_q1_to_q3, U_d5, U_d7, U_phi1_to_phi2, U_EEx_to_EEz,
-            V_q1_to_q3, V_d5, V_d7, V_ph1_to_phi2, V_EEx_to_EEz,
-            A_q1_to_q3, A_d5, A_d7, A_phi1_to_phi2, A_EEx_to_EEz,
-            P_1_to_3, Q_1_to_3
-        ], axis=2)
+            A_phi1_to_phi2 = dataset['Dataset_A_n'][:, 7:9, t:t+input_horizon].transpose(0, 2, 1)
+            A_EEx_to_EEz = dataset['Dataset_A_n'][:, 15:18, t:t+input_horizon].transpose(0, 2, 1)
 
-        # EE_x, EE_y, EE_z
-        target_phi1_to_phi2 = target_set[:, 7:9, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
-        target_EE = target_set[:, 15:18, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
+            P_1_to_3 = dataset['Dataset_P_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)         # 6
+            # dP_1_to_3 = dataset['Dataset_dP_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)
+            Q_1_to_3 = dataset['Dataset_Q_n'][:, 0:6, t:t+input_horizon].transpose(0, 2, 1)         # 6
+
+            input_t = np.concatenate([
+                time_seq,
+                Command_xv1_to_xv3,
+                U_q1_to_q3, U_d5, U_d7,
+                A_phi1_to_phi2, A_EEx_to_EEz,
+                P_1_to_3, Q_1_to_3
+            ], axis=2)
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EEx, EEy, EEz] in A; P, Q.'
+
+        # phi1, phi2, EE_x, EE_y, EE_z
+        if target_config == 'target_U':
+            target_phi1_to_phi2 = dataset['Dataset_U_n'][:, 7:9, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
+            target_EE = dataset['Dataset_U_n'][:, 15:18, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
+            target_information = f'[phi1, phi2, EEx, EEy, EEz] in U.'
+        elif target_config == 'target_A':
+            target_phi1_to_phi2 = dataset['Dataset_A_n'][:, 7:9, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
+            target_EE = dataset['Dataset_A_n'][:, 15:18, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
+            target_information = f'[phi1, phi2, EEx, EEy, EEz] in A.'
+
         target_t = np.concatenate([
             target_phi1_to_phi2,
             target_EE
@@ -224,12 +248,18 @@ def prepare_LSTM_dataset(dataset, input_horizon, output_horizon):
         input_list.append(input_t)
         target_list.append(target_t)
 
-    # 堆叠所有时间步
+    # stack all samples
     inputs = np.concatenate(input_list, axis=0)    # [samples, input_horizon, feature_dim]
     targets = np.concatenate(target_list, axis=0)  # [samples, output_horizon, 3]
+    print(f'Input: {input_information}')
+    print(f'Target: {target_information}')
 
     return inputs, targets
 
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
 
 def INDEX_TEST(max_value, start, end):
     data = [i for i in range(1, max_value)]

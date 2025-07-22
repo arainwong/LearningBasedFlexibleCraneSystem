@@ -1,0 +1,23 @@
+config:
+  data_config: 'data_config_1'
+  target_config: 'target_A'
+  nn_config: 'LSTM'
+
+wandb:
+  wandb_enable: False
+
+data_path:
+  dataset_folder: 'GeneratedDataset_Train/CommandType_'
+  command_type_set: ['sine', 'triangle', 'step']
+
+model:
+  input_horizon: 32
+  output_horizon: 2
+  hidden_dim: 256
+
+training:
+  train_proportion: 0.9
+  batch_size: 128
+  epochs: 61
+  # learning_rate: 1e-3
+  eval_freq: 5
