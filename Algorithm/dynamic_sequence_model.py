@@ -17,21 +17,43 @@ if __name__ == '__main__':
 
     config = load_config('Algorithm/configs/config.yaml')
 
+    # basic setting configurations
+    seed = config['config']['seed']
     data_config = config['config']['data_config']
     target_config = config['config']['target_config']
     nn_config = config['config']['nn_config']
     wandb_enable = config['wandb']['wandb_enable']
     dataset_folder = config['data_path']['dataset_folder']
     command_type_set = config['data_path']['command_type_set']
-    dataset = load_dataset(dataset_folder, command_type_set)
-    show_dataset_shape(dataset)
+    data_normalization = config['data_path']['data_normalization']
 
+    # model configurations
     input_horizon = config['model']['input_horizon']
     output_horizon = config['model']['output_horizon']
     hidden_dim = config['model']['hidden_dim']
 
+    # training configurations
+    epochs = config['training']['epochs']
+    eval_freq = config['training']['eval_freq']
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    dataset = load_dataset(dataset_folder, command_type_set)
+    show_dataset_shape(dataset)
+
     static_inputs = prepare_static_dataset(dataset)
     seq_inputs, targets  = prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, data_config, target_config)
+    if data_normalization:
+        dynamic_sequence_inputs_normalizer = Normalizer()
+        dynamic_sequence_inputs_normalizer.fit(seq_inputs)
+        seq_inputs = dynamic_sequence_inputs_normalizer.normalize(seq_inputs)
+        print(f'Daynamic sequence inputs have been normalized.')
+
+        targets_normalizer = Normalizer()
+        targets_normalizer.fit(targets)
+        targets = targets_normalizer.normalize(targets)
+        print(f'Daynamic sequence targets have been normalized. \nTarget mean: {targets_normalizer.mean} \nTarget std: {targets_normalizer.std}.')
     print(static_inputs.shape, seq_inputs.shape, targets.shape)
     static_dim = static_inputs.shape[0]
     seq_feature_dim = seq_inputs.shape[2]
@@ -67,8 +89,9 @@ if __name__ == '__main__':
     if wandb_enable:
         wandb.init(project='dynamics_model', name=f'{nn_config}_inH_{input_horizon}_outH_{output_horizon}_{data_config}_{target_config}')
     
-    epochs = config['training']['epochs']
-    eval_freq = config['training']['eval_freq']
+    dynamic_sequence_inputs_normalizer.numpy_to_tensor()
+    targets_normalizer.numpy_to_tensor()
+    torch.autograd.set_detect_anomaly(True)
     for epoch in range(epochs):
         total_loss = 0.0
         for batch_static_inputs, batch_seq_inputs, batch_targets in train_dataloader:
@@ -80,6 +103,7 @@ if __name__ == '__main__':
             outputs = dynamic_model(batch_static_inputs, batch_seq_inputs)
             loss = criterion(outputs, batch_targets)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(dynamic_model.parameters(), max_norm=1.0)
             optimizer.step()
             total_loss += loss.item()
         avg_loss = total_loss / len(train_dataloader)
@@ -100,26 +124,30 @@ if __name__ == '__main__':
                     test_targets = test_targets.to(device)
                     
                     test_outputs = dynamic_model(test_static_inputs, test_seq_inputs)
-                    batch_loss = criterion(test_outputs, test_targets).item()
+
+                    test_targets_real = targets_normalizer.denormalize(test_targets)
+                    test_outputs_real = targets_normalizer.denormalize(test_outputs)
+                    
+                    batch_loss = criterion(test_outputs_real, test_targets_real).item()
                     test_loss += batch_loss
 
-                    error = test_targets - test_outputs
+                    error = (test_targets_real - test_outputs_real).abs()
                     batch_mean_error = error.mean(dim=(0)).flatten()
                     mean_error += batch_mean_error
 
             avg_test_loss = test_loss / len(test_dataloader)
-            avg_mean_error = (mean_error / len(test_dataloader)).detach().cpu()
             print(f'Epoch: {epoch+1}, test loss: {avg_test_loss:.6f}')
-            test_target = test_targets[0, :, 0:output_dim].detach().cpu()
-            test_output = test_outputs[0, :, 0:output_dim].detach().cpu()
-            print(f'target: {test_target}, \ntest output: {test_output}')
+            avg_mean_error = (mean_error / len(test_dataloader)).detach().cpu()
             print(f'Target features average error: {avg_mean_error}')
-
+            test_target = test_targets_real[0, :, 0:output_dim].detach().cpu()
+            test_output = test_outputs_real[0, :, 0:output_dim].detach().cpu()
+            print(f'target: {test_target}, \ntest output: {test_output}')
+            
             if wandb_enable:
                 wandb.log({"test_loss": avg_test_loss}, step=epoch)
                 wandb.log({
                     "test_loss": avg_test_loss,
-                    **{f"target_feature_error_{i+1}": v.item() for i, v in enumerate(avg_mean_error)}
+                    **{f"target_feature_error_{i+1}": v.item() for i, v in enumerate(avg_mean_error[0:output_dim])}
                 }, step=epoch)
             
             dynamic_model.train()

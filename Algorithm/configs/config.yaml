@@ -1,6 +1,7 @@
 config:
-  data_config: 'data_config_1'
-  target_config: 'target_A'
+  seed: 0
+  data_config: 'data_config_2'
+  target_config: 'target_V'
   nn_config: 'LSTM'
 
 wandb:
@@ -9,10 +10,11 @@ wandb:
 data_path:
   dataset_folder: 'GeneratedDataset_Train/CommandType_'
   command_type_set: ['sine', 'triangle', 'step']
+  data_normalization: True
 
 model:
   input_horizon: 32
-  output_horizon: 2
+  output_horizon: 1
   hidden_dim: 256
 
 training:

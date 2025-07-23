@@ -144,6 +144,7 @@ class DynamicsTransformer(nn.Module):
             dim_feedforward=hidden_dim * 4,
             batch_first=True
         )
+        # stack of N encoder layers
         self.dynamic_encoder = nn.TransformerEncoder(
             encoder_layer,
             num_layers=num_layers
