@@ -10,14 +10,14 @@ wandb:
 data_path:
   dataset_folder: 'GeneratedDataset_Train/CommandType_'
   command_type_set: ['sine', 'triangle', 'step']
-  data_normalization: True
 
 model:
-  input_horizon: 32
+  input_horizon: 16
   output_horizon: 1
   hidden_dim: 256
 
 training:
+  data_normalization: False
   train_proportion: 0.9
   batch_size: 128
   epochs: 61
