@@ -25,13 +25,15 @@ if __name__ == '__main__':
 
     wandb_enable = config['wandb']['wandb_enable']
 
-    dataset_folder = config['data_path']['dataset_folder']
-    command_type_set = config['data_path']['command_type_set']
+    dataset_folder = config['data_setting']['dataset_folder']
+    command_type_set = config['data_setting']['command_type_set']
+    add_noise = config['data_setting']['add_noise']
 
     # model configurations
     input_horizon = config['model']['input_horizon']
     output_horizon = config['model']['output_horizon']
     hidden_dim = config['model']['hidden_dim']
+    saved_path = config['model']['saved_path']
 
     # training configurations
     data_normalization = config['training']['data_normalization']
@@ -45,7 +47,7 @@ if __name__ == '__main__':
     # show_dataset_shape(dataset)
 
     static_inputs = prepare_static_dataset(dataset)
-    seq_inputs, targets  = prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, data_config, target_config)
+    seq_inputs, targets  = prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, data_config, target_config, add_noise=add_noise)
     if data_normalization:
         dynamic_sequence_inputs_normalizer = Normalizer()
         dynamic_sequence_inputs_normalizer.fit(seq_inputs)
@@ -55,10 +57,10 @@ if __name__ == '__main__':
         targets_normalizer = Normalizer()
         targets_normalizer.fit(targets)
         targets = targets_normalizer.normalize(targets)
-        print(f'Daynamic sequence targets have been normalized. \nTarget mean: {targets_normalizer.mean} \nTarget std: {targets_normalizer.std}.')
+        print(f'Daynamic sequence targets have been normalized. \nTarget mean: {targets_normalizer.mean} \nTarget std: {targets_normalizer.std} \n')
     else:
-        print(f'Data normalization disabled.')
-    print(static_inputs.shape, seq_inputs.shape, targets.shape)
+        print(f'Data normalization disabled. \n')
+    print(f'Static inputs shape: {static_inputs.shape} \nDynamic sequence inputs shape: {seq_inputs.shape} \nTargets shape: {targets.shape} \n')
     static_dim = static_inputs.shape[0]
     seq_feature_dim = seq_inputs.shape[2]
     _, output_horizon, output_dim = targets.shape
@@ -74,8 +76,8 @@ if __name__ == '__main__':
     elif nn_config == 'Transformer':
         full_dataset = DynamicsTransformerDataset(static_inputs, seq_inputs, targets)
         dynamic_model = DynamicsTransformer(static_dim=static_dim, seq_feature_dim=seq_feature_dim, 
-                                     output_horizon=output_horizon, output_dim=output_dim, hidden_dim=hidden_dim).to(device)
-    print(f'Using model type: {nn_config}')
+                                     output_horizon=output_horizon, output_dim=output_dim, hidden_dim=hidden_dim, max_seq_len=input_horizon).to(device)
+    print(f'Using model type: {nn_config} \n')
 
     train_proportion = config['training']['train_proportion']
     batch_size = config['training']['batch_size']
@@ -97,6 +99,7 @@ if __name__ == '__main__':
         dynamic_sequence_inputs_normalizer.numpy_to_tensor()
         targets_normalizer.numpy_to_tensor()
     torch.autograd.set_detect_anomaly(True)
+    min_test_loss = float('inf')
     for epoch in range(epochs):
         total_loss = 0.0
         for batch_static_inputs, batch_seq_inputs, batch_targets in train_dataloader:
@@ -149,10 +152,22 @@ if __name__ == '__main__':
                     mean_error += batch_mean_error
 
             avg_test_loss = test_loss / len(test_dataloader)
-            print(f'Epoch: {epoch+1}, test loss: {avg_test_loss:.6f}')
-            avg_denormalized_test_loss = denormalized_test_loss / len(test_dataloader)
             if data_normalization:
-                print(f'Epoch: {epoch+1}, test loss: {avg_denormalized_test_loss:.6f}')
+                avg_denormalized_test_loss = denormalized_test_loss / len(test_dataloader)
+                print(f'Epoch: {epoch+1}, test loss: {avg_test_loss:.6f}; denormalized test loss: {avg_denormalized_test_loss:.6f}')
+            else:
+                print(f'Epoch: {epoch+1}, test loss: {avg_test_loss:.6f}')
+            
+            # save dynamic model once get lowest test loss
+            if data_normalization and min_test_loss > avg_denormalized_test_loss:
+                min_test_loss = avg_denormalized_test_loss
+                torch.save(dynamic_model.state_dict(), f'{saved_path}/dynamic_{nn_config}_inH_{input_horizon}_outH_{output_horizon}_{data_config}_{target_config}.pth')
+                print(f'New lowest denormalized test loss {min_test_loss:.6f}, dynamic model saved in path: {saved_path}.')
+            elif (not data_normalization) and min_test_loss > avg_test_loss:
+                min_test_loss = avg_test_loss
+                torch.save(dynamic_model.state_dict(), f'{saved_path}/dynamic_{nn_config}_inH_{input_horizon}_outH_{output_horizon}_{data_config}_{target_config}.pth')
+                print(f'New lowest test loss {min_test_loss:.6f}, dynamic model saved in path: {saved_path}.')
+
             test_target = test_targets_real[0, :, 0:output_dim].detach().cpu()
             test_output = test_outputs_real[0, :, 0:output_dim].detach().cpu()
             print(f'target: {test_target}, \ntest output: {test_output}')
@@ -172,4 +187,4 @@ if __name__ == '__main__':
 
     if wandb_enable:
         wandb.finish()
-    torch.save(dynamic_model.state_dict(), f'Algorithm/saved_models/forward_dynamic/dynamic_{nn_config}_inH_{input_horizon}_outH_{output_horizon}_{data_config}_{target_config}.pth')
+    

@@ -157,7 +157,7 @@ def prepare_static_dataset(dataset):
     static_features = np.concatenate([sys_features, body_features])
     return static_features
 
-def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, data_config, target_config):
+def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, data_config, target_config, add_noise=False, noise_level=0.01):
     """
         input: [samples, input_horizon, feature_dim] -> feature_dim = 58 -> [t, command, u, v, a, p, dp, q]
         output: [samples, output_horizon, target_dim]
@@ -175,7 +175,7 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
         time_seq = time_seq[..., np.newaxis]                         # [N, input_horizon, 1]
         Command_xv1_to_xv3 = dataset['Dataset_Command_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)
 
-        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in U, V, A; P, Q -> dim = 42
+        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EE] in U, V, A; P, Q -> dim = 42
         if data_config == 'data_config_0':
             U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
             U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
@@ -208,9 +208,9 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
                 A_q1_to_q3, A_d5, A_d7, A_phi1_to_phi2, A_EEx_to_EEz,
                 P_1_to_3, Q_1_to_3
             ], axis=2)
-            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in U, V, A; P, Q.'
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EE] in U, V, A; P, Q.'
 
-        # [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EEx, EEy, EEz] in A; P, Q -> dim = 22
+        # [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EE] in A; P, Q -> dim = 22
         elif data_config == 'data_config_1':
             U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
             U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
@@ -230,9 +230,9 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
                 A_phi1_to_phi2, A_EEx_to_EEz,
                 P_1_to_3, Q_1_to_3
             ], axis=2)
-            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EEx, EEy, EEz] in A; P, Q.'
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EE] in A; P, Q.'
 
-        # [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EEx, EEy, EEz] in V; P, Q -> dim = 22
+        # [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EE] in V; P, Q -> dim = 22
         elif data_config == 'data_config_2':
             U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
             U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
@@ -252,9 +252,9 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
                 V_phi1_to_phi2, V_EEx_to_EEz,
                 P_1_to_3, Q_1_to_3
             ], axis=2)
-            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EEx, EEy, EEz] in V; P, Q.'
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7] in U; [phi1, phi2, EE] in V; P, Q.'
 
-        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in U; P, Q -> dim = 22
+        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EE] in U; P, Q -> dim = 22
         elif data_config == 'data_config_3':
             U_q1_to_q3 = dataset['Dataset_U_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
             U_d5 = dataset['Dataset_U_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
@@ -273,9 +273,9 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
                 U_phi1_to_phi2, U_EEx_to_EEz,
                 P_1_to_3, Q_1_to_3
             ], axis=2)
-            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in U; P, Q.'
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EE] in U; P, Q.'
 
-        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in V; P, Q -> dim = 22
+        # [theta1, theta2, theta3, d5, d7, phi1, phi2, EE] in V; P, Q -> dim = 22
         elif data_config == 'data_config_4':
             V_q1_to_q3 = dataset['Dataset_V_n'][:, 0:3, t:t+input_horizon].transpose(0, 2, 1)       # 3
             V_d5 = dataset['Dataset_V_n'][:, 4:5, t:t+input_horizon].transpose(0, 2, 1)             # 1
@@ -294,23 +294,23 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
                 V_phi1_to_phi2, V_EEx_to_EEz,
                 P_1_to_3, Q_1_to_3
             ], axis=2)
-            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EEx, EEy, EEz] in V; P, Q.'
+            input_information = f't; xv1, xv2, xv3; [theta1, theta2, theta3, d5, d7, phi1, phi2, EE] in V; P, Q.'
 
-        # phi1, phi2, EE_x, EE_y, EE_z
+        # phi1, phi2, EE
         if target_config == 'target_U':
             target_phi1_to_phi2 = dataset['Dataset_U_n'][:, 7:9, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
             target_EE = dataset['Dataset_U_n'][:, 15:18, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
-            target_information = f'[phi1, phi2, EEx, EEy, EEz] in U.'
+            target_information = f'[phi1, phi2, EE] in U.'
         
         elif target_config == 'target_V':
             target_phi1_to_phi2 = dataset['Dataset_V_n'][:, 7:9, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
             target_EE = dataset['Dataset_V_n'][:, 15:18, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
-            target_information = f'[phi1, phi2, EEx, EEy, EEz] in V.'
+            target_information = f'[phi1, phi2, EE] in V.'
 
         elif target_config == 'target_A':
             target_phi1_to_phi2 = dataset['Dataset_A_n'][:, 7:9, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
             target_EE = dataset['Dataset_A_n'][:, 15:18, t+input_horizon:t+input_horizon+output_horizon].transpose(0, 2, 1)
-            target_information = f'[phi1, phi2, EEx, EEy, EEz] in A.'
+            target_information = f'[phi1, phi2, EE] in A.'
 
         target_t = np.concatenate([
             target_phi1_to_phi2,
@@ -323,8 +323,15 @@ def prepare_dynamic_sequence_dataset(dataset, input_horizon, output_horizon, dat
     # stack all samples
     inputs = np.concatenate(input_list, axis=0)    # [samples, input_horizon, features_dim]
     targets = np.concatenate(target_list, axis=0)  # [samples, output_horizon, features_dim]
-    print(f'Input: {input_information}')
-    print(f'Target: {target_information}')
+    print(f'Inputs: {input_information}')
+    print(f'Targets: {target_information} \n')
+    if add_noise:
+        dims = tuple(i for i in range(inputs.ndim - 1))
+        # calculate each feature's std
+        feature_std = np.std(inputs, axis=dims, keepdims=True)
+        noise = np.random.normal(loc=0.0, scale=noise_level * feature_std, size=inputs.shape)
+        inputs += noise
+        print(f'Inputs shape {inputs.shape} added Gaussian noise in dim {dims}. \n')
 
     return inputs, targets
 
